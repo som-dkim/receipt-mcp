@@ -12,4 +12,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["python", "-u", "server.py"]
+CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT}"]
