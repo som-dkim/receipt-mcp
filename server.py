@@ -1,20 +1,37 @@
-import os
+import contextlib
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
-
-PORT = int(os.getenv("PORT", "8080"))
 
 mcp = FastMCP(
     name="ReceiptMCP",
     instructions="ReceiptMCP(영수증MCP) provides tools for receipt parsing and spending records.",
-    host="0.0.0.0",
-    port=PORT,
     stateless_http=True,
-    json_response=True,
 )
+
+
+async def root(request):
+    return JSONResponse(
+        {
+            "status": "ok",
+            "service": "ReceiptMCP",
+            "message": "ReceiptMCP server is running. MCP endpoint is /mcp.",
+        }
+    )
+
+
+async def health(request):
+    return JSONResponse(
+        {
+            "status": "healthy",
+            "service": "ReceiptMCP",
+        }
+    )
 
 
 @mcp.tool(
@@ -32,7 +49,6 @@ def health_check() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "ReceiptMCP",
-        "port": PORT,
     }
 
 
@@ -93,6 +109,17 @@ def format_receipt_table(receipt_text: str) -> str:
     return "\n".join(table_lines)
 
 
-if __name__ == "__main__":
-    print(f"Starting ReceiptMCP on 0.0.0.0:{PORT}", flush=True)
-    mcp.run(transport="streamable-http")
+@contextlib.asynccontextmanager
+async def lifespan(app: Starlette):
+    async with mcp.session_manager.run():
+        yield
+
+
+app = Starlette(
+    routes=[
+        Route("/", root, methods=["GET"]),
+        Route("/health", health, methods=["GET"]),
+        Mount("/", app=mcp.streamable_http_app()),
+    ],
+    lifespan=lifespan,
+)
